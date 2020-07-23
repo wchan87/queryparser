@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.neo4j.driver.Values.parameters;
 
@@ -65,7 +66,7 @@ public class QueryParser implements AutoCloseable {
                 List<String> ruleNames = Arrays.asList(parser.getRuleNames());
                 // TODO log error on else
                 if (parser.getNumberOfSyntaxErrors() == 0) {
-                    parseAndSaveToGraphDb(session, o.get("id(f)").asInt(), ruleNames, tree);
+                    parseAndSaveToGraphDb(session, o.get("id(f)").asInt(), 0, ruleNames, tree);
                 }
                 // TODO cleanup with MATCH (n) WHERE any (x in labels(n) WHERE x <> 'SqlFile') DETACH DELETE n
 
@@ -76,18 +77,31 @@ public class QueryParser implements AutoCloseable {
         }
     }
 
-    private void parseAndSaveToGraphDb(Session session, int id, List<String> ruleNames, ParseTree tree) {
+    private void parseAndSaveToGraphDb(Session session, int id, int order, List<String> ruleNames, ParseTree tree) {
         String text = Trees.getNodeText(tree, ruleNames);
         if (tree instanceof RuleContext) {
             // insert current node and return
-            int currentId = session.run("MATCH (n) WHERE id(n) = $id CREATE (m:tsql_" + text + ")-[:IS_CHILD_OF]->(n) RETURN id(m)", Map.of("id", id)).single().get("id(m)").asInt();
-            for (int i = 0; i < tree.getChildCount(); i++) {
-                parseAndSaveToGraphDb(session, currentId, ruleNames, tree.getChild(i));
+            int currentId = session.run("MATCH (n) WHERE id(n) = $id CREATE (m:tsql_" + text +
+                            ")-[r:IS_CHILD_OF]->(n) SET r.order = $order RETURN id(m)",
+                    Map.of("id", id, "order", order)).single().get("id(m)").asInt();
+            if (tree.getChildCount() != 0 && IntStream.range(0, tree.getChildCount())
+                    .noneMatch(i -> tree.getChild(i) instanceof RuleContext)) {
+                String currentText = IntStream.range(0, tree.getChildCount())
+                        .mapToObj(i -> Trees.getNodeText(tree.getChild(i), ruleNames))
+                        .collect(Collectors.joining());
+                // removes an extra level of nesting of a terminal node
+                session.run("MATCH (n) WHERE id(n) = $id SET n.text = $text",
+                        Map.of("id", currentId, "text", currentText));
+            } else {
+                for (int i = 0; i < tree.getChildCount(); i++) {
+                    parseAndSaveToGraphDb(session, currentId, i, ruleNames, tree.getChild(i));
+                }
             }
         } else {
-            int currentId = session.run("MATCH (n) WHERE id(n) = $id CREATE (m:tsql_VALUE)-[:IS_CHILD_OF]->(n) SET m.text = $text RETURN id(m)", Map.of("id", id, "text", text)).single().get("id(m)").asInt();
+            int currentId = session.run("MATCH (n) WHERE id(n) = $id CREATE (m:tsql_VALUE)-[r:IS_CHILD_OF]->(n) SET r.order = $order, m.text = $text RETURN id(m)",
+                    Map.of("id", id, "order", order, "text", text)).single().get("id(m)").asInt();
             for (int i = 0; i < tree.getChildCount(); i++) {
-                parseAndSaveToGraphDb(session, currentId, ruleNames, tree.getChild(i));
+                parseAndSaveToGraphDb(session, currentId, i, ruleNames, tree.getChild(i));
             }
         }
     }
