@@ -14,6 +14,12 @@ repositories {
     mavenCentral()
 }
 
+// https://stackoverflow.com/questions/40995727/gradle-cant-find-antlr-token-file/49388412
+generateGrammarSource {
+    arguments += ['-package', 'org.chanwr.parser']
+    outputDirectory = new File(buildDir.toString() + '/generated-src/antlr/main/org/chanwr/parser/')
+}
+
 // https://michelkraemer.com/gradle-download-task-download-files-with-progress/
 task downloadFile(type: Download) {
     src([
