@@ -98,11 +98,14 @@ public class QueryParser implements AutoCloseable {
                 }
             }
         } else {
+            // TODO appears to have no practical value
+            /*
             int currentId = session.run("MATCH (n) WHERE id(n) = $id CREATE (m:tsql_VALUE)-[r:IS_CHILD_OF]->(n) SET r.order = $order, m.text = $text RETURN id(m)",
                     Map.of("id", id, "order", order, "text", text)).single().get("id(m)").asInt();
             for (int i = 0; i < tree.getChildCount(); i++) {
                 parseAndSaveToGraphDb(session, currentId, i, ruleNames, tree.getChild(i));
             }
+             */
         }
     }
 
