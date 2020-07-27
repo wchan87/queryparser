@@ -1,0 +1,3 @@
+/build/
+# TODO not sure why ANTLR generates additional files in the below folder
+/src/main/gen/

@@ -1,0 +1,51 @@
+plugins {
+    id 'de.undercouch.download' version '4.1.1'
+    id 'antlr'
+    id 'org.springframework.boot' version '2.3.2.RELEASE'
+    id 'io.spring.dependency-management' version '1.0.9.RELEASE'
+    id 'java'
+}
+
+sourceCompatibility = 11
+targetCompatibility = 11
+
+repositories {
+    mavenCentral()
+}
+
+// https://stackoverflow.com/questions/40995727/gradle-cant-find-antlr-token-file/49388412
+generateGrammarSource {
+    arguments += ['-package', 'org.chanwr.parser']
+    outputDirectory = new File(buildDir.toString() + '/generated-src/antlr/main/org/chanwr/parser/')
+}
+
+// https://michelkraemer.com/gradle-download-task-download-files-with-progress/
+task downloadFile(type: Download) {
+    src([
+            'https://raw.githubusercontent.com/antlr/grammars-v4/master/sql/tsql/TSqlLexer.g4',
+            'https://raw.githubusercontent.com/antlr/grammars-v4/master/sql/tsql/TSqlParser.g4'
+    ])
+    dest 'src/main/antlr'
+    overwrite false
+}
+
+generateGrammarSource.dependsOn downloadFile
+jar.dependsOn generateGrammarSource
+
+dependencies {
+    antlr group: "org.antlr", name: "antlr4", version: "4.8-1"
+    // https://mvnrepository.com/artifact/org.neo4j.driver/neo4j-java-driver
+    implementation group: 'org.neo4j.driver', name: 'neo4j-java-driver', version: '4.1.1'
+    implementation(project(':ui'))
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-web'
+    implementation group: 'org.springdoc', name: 'springdoc-openapi-ui', version: '1.4.3'
+    // TODO figure out how to get session out of the SDN
+    // implementation group: 'org.springframework.data', name: 'spring-data-neo4j', version: '5.3.2.RELEASE'
+    implementation group: 'commons-io', name: 'commons-io', version: '2.7'
+
+    testImplementation group: 'junit', name: 'junit', version: '4.12'
+}
+
+test {
+    useJUnitPlatform()
+}

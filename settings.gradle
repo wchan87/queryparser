@@ -1,2 +1,3 @@
 rootProject.name = 'queryparser'
 
+include 'api', 'ui'

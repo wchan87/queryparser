@@ -1,37 +1,4 @@
-plugins {
-    id 'java'
-    id 'antlr'
-    id 'de.undercouch.download' version '4.1.1'
-}
-
-sourceCompatibility = 11
-targetCompatibility = 11
-
-group 'org.chanwr'
-version '1.0-SNAPSHOT'
-
-repositories {
-    mavenCentral()
-}
-
-// https://stackoverflow.com/questions/40995727/gradle-cant-find-antlr-token-file/49388412
-generateGrammarSource {
-    arguments += ['-package', 'org.chanwr.parser']
-    outputDirectory = new File(buildDir.toString() + '/generated-src/antlr/main/org/chanwr/parser/')
-}
-
-// https://michelkraemer.com/gradle-download-task-download-files-with-progress/
-task downloadFile(type: Download) {
-    src([
-            'https://raw.githubusercontent.com/antlr/grammars-v4/master/sql/tsql/TSqlLexer.g4',
-            'https://raw.githubusercontent.com/antlr/grammars-v4/master/sql/tsql/TSqlParser.g4'
-    ])
-    dest 'src/main/antlr'
-}
-
-dependencies {
-    testCompile group: 'junit', name: 'junit', version: '4.12'
-    antlr "org.antlr:antlr4:4.8-1"
-    // https://mvnrepository.com/artifact/org.neo4j.driver/neo4j-java-driver
-    compile group: 'org.neo4j.driver', name: 'neo4j-java-driver', version: '4.1.1'
+allprojects {
+    group 'org.chanwr'
+    version '1.0-SNAPSHOT'
 }
