@@ -1,0 +1,11 @@
+<mat-card>
+  <mat-card-title>Query List</mat-card-title>
+  <mat-card-content>
+    <mat-list>
+      <mat-list-item *ngFor="let query of queries">
+        <div mat-line>{{query.id}}</div>
+        <div mat-line>{{query.name}}</div>
+      </mat-list-item>
+    </mat-list>
+  </mat-card-content>
+</mat-card>
