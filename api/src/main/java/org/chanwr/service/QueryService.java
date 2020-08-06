@@ -15,6 +15,7 @@ import org.chanwr.parser.TSqlParser;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.summary.SummaryCounters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,14 +44,14 @@ public class QueryService {
 
     public int loadSqlFile(String name, String sql) {
         try (var session = driver.session()) {
-            return session.run("MERGE (f:SqlFile {name: $name}) SET f.sql = $sql RETURN id(f)",
-                    parameters("name", name, "sql", sql)).single().get("id(f)").asInt();
+            return session.run("MERGE (n:SqlFile:TSqlSource {name: $name})-[:HAS]->(s:TSqlScript) SET s.sql = $sql RETURN id(n)",
+                    parameters("name", name, "sql", sql)).single().get("id(n)").asInt();
         }
     }
 
     public List<Map<String, Object>> getAll() {
         try (var session = driver.session()) {
-            var result = session.run("MATCH (n:SqlFile) RETURN id(n), n.name, n.sql");
+            var result = session.run("MATCH (n:TSqlSource)-[:HAS]->(s:TSqlScript) RETURN id(n), n.name, s.sql");
             return result.stream().map(this::createQueryModel)
                     .collect(Collectors.toList());
         }
@@ -58,18 +59,19 @@ public class QueryService {
 
     public String generateAST(int id) {
         try (var session = driver.session()) {
-            var result = session.run("MATCH (f:SqlFile) WHERE id(f) = $id RETURN f.sql", Map.of("id", id));
+            var result = session.run("MATCH (n:TSqlSource)-[:HAS]->(s:TSqlScript) WHERE id(n) = $id RETURN id(s), s.sql", Map.of("id", id));
             // https://github.com/antlr/antlr4/blob/master/doc/case-insensitive-lexing.md#custom-character-streams-approach
-            TSqlParser parser = getTSqlParser(result.single().get("f.sql").asString());
+            var record = result.single();
+            int sqlId = record.get("id(s)").asInt();
+            TSqlParser parser = getTSqlParser(record.get("s.sql").asString());
             // tsql_file is the root of the grammar
             ParseTree tree = parser.tsql_file();
             // https://github.com/antlr/antlr4/blob/antlr4-master-4.8-1/runtime/Java/src/org/antlr/v4/runtime/tree/Trees.java#L39
             List<String> ruleNames = Arrays.asList(parser.getRuleNames());
             // TODO log error on else
             if (parser.getNumberOfSyntaxErrors() == 0) {
-                parseAndSaveToGraphDb(session, id, 0, ruleNames, tree);
+                parseAndSaveToGraphDb(session, sqlId, 0, ruleNames, tree);
             }
-            // TODO cleanup with MATCH (n) WHERE any (x in labels(n) WHERE x <> 'SqlFile') DETACH DELETE n
 
             // https://stackoverflow.com/questions/23809005/how-to-display-antlr-tree-gui
             // openTreeViewer(ruleNames, tree);
@@ -110,9 +112,16 @@ public class QueryService {
         }
     }
 
+    public List<Integer> getInventory() {
+        try (var session = driver.session()) {
+            var result = session.run("MATCH (n:TSqlSource) RETURN id(n)");
+            return result.stream().map(o -> o.get("id(n)").asInt()).collect(Collectors.toList());
+        }
+    }
+
     public Map<String, Object> get(int id) {
         try (var session = driver.session()) {
-            var result = session.run("MATCH (n:SqlFile) WHERE id(n) = $id RETURN id(n), n.name, n.sql",
+            var result = session.run("MATCH (n:TSqlSource)-[:HAS]->(s:TSqlScript) WHERE id(n) = $id RETURN id(n), n.name, s.sql",
                     Map.of("id", id));
             var map = new HashMap<>(createQueryModel(result.single()));
             TSqlParser parser = getTSqlParser(map.get("sql").toString());
@@ -144,7 +153,25 @@ public class QueryService {
     private Map<String, Object> createQueryModel(Record r) {
         return Map.of("id", r.get("id(n)").asInt(),
                 "name", r.get("n.name").asString(),
-                "sql", r.get("n.sql").asString());
+                "sql", r.get("s.sql").asString());
     }
 
+    public Map<String, Object> deleteAll() {
+        try (var session = driver.session()) {
+            var result = session.run("MATCH (n:TSqlSource)-[:HAS]->(o:TSqlScript)<-[:IS_CHILD_OF*0..]-(p) DETACH DELETE n, o, p");
+            return generateDeleteCounters(result.consume().counters());
+        }
+    }
+
+    public Map<String, Object> delete(int id) {
+        try (var session = driver.session()) {
+            var result = session.run("MATCH (n:TSqlSource)-[:HAS]->(o:TSqlScript)<-[:IS_CHILD_OF*0..]-(p) WHERE id(n) = $id DETACH DELETE n, o, p",
+                    Map.of("id", id));
+            return generateDeleteCounters(result.consume().counters());
+        }
+    }
+
+    private Map<String, Object> generateDeleteCounters(SummaryCounters counters) {
+        return Map.of("nodesDeleted", counters.nodesDeleted(), "relationshipsDeleted", counters.relationshipsDeleted());
+    }
 }
